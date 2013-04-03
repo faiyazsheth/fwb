@@ -4098,123 +4098,16 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             mPendingCapsLockToggle = false;
         }
 
-        // Screen pinning within back key early check-in.
-        if (backKey) {
-            if (down && !isCustomSource) {
-                if (repeatCount == 0 && isScreenPinningOn()) {
-                    preloadActivityManager();
-                } else if (longPress && isScreenPinningOn()) {
-                    stopScreenPinning();
+        // Specific device key handling
+        if (mDeviceKeyHandler != null) {
+            try {
+                // The device only should consume known keys.
+                if (mDeviceKeyHandler.handleKeyEvent(event)) {
                     return -1;
                 }
+            } catch (Exception e) {
+                Slog.w(TAG, "Could not dispatch event to device key handler", e);
             }
-        }
-
-        // Custom event handling for supported key codes.
-        if (canApplyCustomPolicy(keyCode) && !isCustomSource) {
-            if ((menuKey || appSwitchKey) && keyguardOn) {
-                // Don't handle the key.
-                return -1;
-            }
-
-            final Runnable doubleTapRunnable = getDoubleTapTimeoutRunnable(keyCode);
-
-            // We have released the keyCode's key, decide what and if run our key's action.
-            if (!down) {
-                cancelPreloadRecentApps();
-
-                setKeyPressed(keyCode, false);
-                if (isKeyConsumed(keyCode)) {
-                    setKeyConsumed(keyCode, false);
-                    return -1;
-                }
-
-                if (canceled) {
-                    Log.i(TAG, "Ignoring; " + "keyCode: " + keyCode + ", event canceled.");
-                    return -1;
-                }
-
-                if (homeKey) {
-                    // If an incoming call is ringing, HOME is totally disabled.
-                    // (The user is already on the InCallUI at this point,
-                    // and his ONLY options are to answer or reject the call.)
-                    TelecomManager telecomManager = getTelecommService();
-                    if (telecomManager != null && telecomManager.isRinging()) {
-                        Log.i(TAG, "Ignoring; " + "keyCode: " + keyCode + "there's a ringing incoming call.");
-                        return -1;
-                    }
-                }
-
-                // Delay handling home if a double-tap is possible.
-                final int doubleTapBehavior = getKeyDoubleTapBehavior(keyCode);
-                if (doubleTapBehavior != KEY_ACTION_NOTHING) {
-                    mHandler.removeCallbacks(doubleTapRunnable); // just in case
-                    setKeyDoubleTapPending(keyCode, true);
-                    mHandler.postDelayed(doubleTapRunnable,
-                            ViewConfiguration.getDoubleTapTimeout() / 2);
-                    return -1;
-                }
-
-                handleShortPressOnKeyCode(keyCode);
-                return -1;
-            }
-
-            if (homeKey) {
-                // If a system window has focus, then it doesn't make sense
-                // right now to interact with applications.
-                WindowManager.LayoutParams attrs = win != null ? win.getAttrs() : null;
-                if (attrs != null) {
-                    final int type = attrs.type;
-                    if (type == WindowManager.LayoutParams.TYPE_KEYGUARD_DIALOG
-                            || (attrs.privateFlags & PRIVATE_FLAG_KEYGUARD) != 0) {
-                        // the "app" is keyguard, so give it the key
-                        return 0;
-                    }
-                    final int typeCount = WINDOW_TYPES_WHERE_HOME_DOESNT_WORK.length;
-                    for (int i = 0; i < typeCount; i++) {
-                        if (type == WINDOW_TYPES_WHERE_HOME_DOESNT_WORK[i]) {
-                            // don't do anything, but also don't pass it to the app
-                            return -1;
-                        }
-                    }
-                }
-            }
-
-            // Remember that keyCode's key is pressed and handle special actions.
-            if (repeatCount == 0) {
-                setKeyPressed(keyCode, true);
-                setKeyConsumed(keyCode, false);
-                final boolean doubleTapPending = isKeyDoubleTapPending(keyCode);
-                final int longPressBehavior = getKeyLongPressBehavior(keyCode);
-                final int doubleTapBehavior = getKeyDoubleTapBehavior(keyCode);
-                if (doubleTapPending) {
-                    setKeyDoubleTapPending(keyCode, false);
-                    mHandler.removeCallbacks(doubleTapRunnable);
-                    setKeyConsumed(keyCode, true);
-                    if (!keyguardOn) {
-                        handleDoubleTapOnKeyCode(keyCode);
-                    }
-                } else {
-                    if (keyCode == KeyEvent.KEYCODE_APP_SWITCH
-                            || longPressBehavior == KEY_ACTION_APP_SWITCH
-                            || doubleTapBehavior == KEY_ACTION_APP_SWITCH
-                            || longPressBehavior == KEY_ACTION_SPLIT_SCREEN
-                            || doubleTapBehavior == KEY_ACTION_SPLIT_SCREEN
-                            || longPressBehavior == KEY_ACTION_LAST_APP
-                            || doubleTapBehavior == KEY_ACTION_LAST_APP) {
-                        preloadRecentApps();
-                    }
-                }
-            } else if (longPress) {
-                if (DEBUG_INPUT) {
-                    Log.i(TAG, "longPress happened! " + ", keyguardOn=" + keyguardOn);
-                }
-                setKeyConsumed(keyCode, true);
-                if (!keyguardOn) {
-                    handleLongPressOnKeyCode(keyCode);
-                }
-            }
-            return -1;
         }
 
         // First we always handle the home key here, so applications
@@ -4660,18 +4553,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         // Reserve all the META modifier combos for system behavior
         if ((metaState & KeyEvent.META_META_ON) != 0) {
             return -1;
-        }
-
-        // Specific device key handling
-        if (mDeviceKeyHandler != null) {
-            try {
-                // The device only should consume known keys.
-                if (mDeviceKeyHandler.handleKeyEvent(event)) {
-                    return -1;
-                }
-            } catch (Exception e) {
-                Slog.w(TAG, "Could not dispatch event to device key handler", e);
-            }
         }
 
         // Let the application handle the key.
